@@ -20,7 +20,10 @@ $ ./heartbleed --mode scan --server <server> --port <port>
 # Ex-filtration Mode
 $ ./heartbleed --mode exfil --server <server> --port <port> --bytes <bytes>
 ```
-Running the program in Ex-filtration mode to dump the given number of bytes from the server's heartbeat response if it's vulnerable.
+
+## Design
+The program first established a TCP connection with the targetted server. Then it sends a Client Hello message which includes the heartbeat extension to enable the functionality at the server. After receiving and parsing the Server Hello messages, the program sends the exploit packet as a heartbeat request, which has a payload length of 65535 bytes and is without a payload. If the server responds to the request, the program deems the server vulnerable to the bug, and if the program is in Ex-filtration mode, it will dump the given number of bytes from the response.
+
 
 ## References
 - [How to Exploit the Heartbleed Bug](https://stackabuse.com/how-to-exploit-the-heartbleed-bug/)  
